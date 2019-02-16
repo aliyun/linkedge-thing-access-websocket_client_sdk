@@ -44,7 +44,7 @@
 
 |名称 |类型 |取值 |描述 |
 |:---: |--- |--- |--- |
-|method |字符串 |"onlineDevice",<br>"offlineDevice",<br>"reportProperty",<br>"reportEvent",<br>"setProperty",<br>"getProperty",<br>"methodCall" |执行动作 |
+|method |字符串 |"onlineDevice",<br>"offlineDevice",<br>"reportProperty",<br>"reportEvent",<br>"setProperty",<br>"getProperty",<br>"callService" |执行动作 |
 |code |32位无符号整型 |[code取值](#Code取值) |请求结果返回码。|
 |message |字符串 |- |与code对应的提示信息 |
 |messageId |32位无符号整型 |-|消息编号，唯一标识这条消息, 对端收到消息的反馈中携带相同id。 |
@@ -276,7 +276,7 @@
 请求
 {
     "version": "v0.2",
-    "method": "methodCall",
+    "method": "callService",
     "messageId": 4,
     "payload": {
         "productKey": "product_key",
