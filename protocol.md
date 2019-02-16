@@ -55,7 +55,7 @@
 |identifier |字符串 |- |属性、事件、服务标识符 |
 |inputData|json数组 |- |输入参数 |
 |outputData|json数组 |- |输出参数 |
-|type|32位无符号整型|[type取值](#Type取值) |属性或参数的数据类型 |
+|type|字符串 |- |属性或参数的数据类型 |
 |value|所有json数据类型 |- |属性或参数值 |
 
 ### Code取值
@@ -81,19 +81,6 @@
 |109006 |服务的输入参数不正确错误码 |
 |109007 |JSON格式错误 |
 |109008 |参数类型错误 |
-
-### Type取值
-| 取值 | 含义 |
-| :--: | :-- |
-|0 |整型 |
-|1 |布尔型 对应值为 0 or 1 |
-|2 |浮点型 |
-|3 |字符串型 |
-|4 |日期型 |
-|5 |枚举型 |
-|6 |结构型 |
-|7 |数组型 |
-|8 |双精度浮点型 |
 
 ## 设备上线
 
@@ -139,7 +126,7 @@
         "properties": [
             {
                 "identifier": "name_int",
-                "type": 0,
+                "type": "int",
                 "value": 123
             }
         ]
@@ -175,7 +162,7 @@
         "inputData": [
             {
                 "identifier": "name_int",
-                "type": 0,
+                "type": "int",
                 "value": 123
             }
         ]
@@ -208,12 +195,12 @@
         "properties": [
             {
                 "identifier": "name_int",
-                "type": 0,
+                "type": "int",
                 "value": 123
             },
             {
                 "identifier": "name_bool",
-                "type": 1,
+                "type": "bool",
                 "value": 0
             }        
         ]
@@ -254,12 +241,12 @@
         "properties": [
             {
                 "identifier": "name_int",
-                "type": 0,
+                "type": "int",
                 "value": 123
             },
             {
                 "identifier": "name_bool",
-                "type": 1,
+                "type": "bool",
                 "value": 0
             }        
         ]
@@ -284,8 +271,8 @@
         "identifier": "service_name",
         "inputData": [
             {
-                "identifier": "name_bool",
-                "type": 1,
+                "identifier": "name_int",
+                "type": "int",
                 "value": 123
             }
         ]
