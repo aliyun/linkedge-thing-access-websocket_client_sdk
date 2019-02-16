@@ -34,7 +34,7 @@
 应答
 {
     "code": 0,
-	"message": "Success",
+    "message": "Success",
     "messageId": 0,
     "payload": {}
 }
@@ -116,7 +116,7 @@
 应答
 {
     "code": 0,
-	"message": "Success",
+    "message": "Success",
     "messageId": 1,
     "payload": {}
 }
@@ -149,7 +149,7 @@
 应答
 {
     "code": 0,
-	"message": "Success",
+    "message": "Success",
     "messageId": 0,
     "payload": {}
 }
@@ -185,7 +185,7 @@
 应答
 {
     "code": 0,
-	"message": "Success",
+    "message": "Success",
     "messageId": 1,
     "payload": {}
 }
@@ -323,7 +323,7 @@
 应答
 {
     "code": 0,
-	"message":"Success",
+    "message":"Success",
     "messageId": 2,
     "payload": {}
 }
