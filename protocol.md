@@ -1,0 +1,330 @@
+# 阿里云 IoT 边缘计算设备接入协议(WebSocket版)
+
+## 目录
+* [简介](#简介)
+* [消息体格式](#消息体格式)
+* [设备上线](#设备上线)
+* [上报属性](#上报属性)
+* [上报事件](#上报事件)
+* [设置属性](#设置属性)
+* [获取属性](#获取属性)
+* [方法调用](#方法调用)
+* [设备下线](#设备下线)
+
+## 简介
+
+本文档定义了一套基于JSON规范的设备接入阿里云IoT边缘计算(Link IoT Edge)的协议规范。设备端作为client, 边缘计算网关作为server, 基于本协议完成
+设备上/下线，上报属性，上报事件，获取属性，设置属性，方法调用等功能。
+
+## 消息体格式
+- 示例:
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "onlineDevice",
+    "messageId": 0,
+    "payload":{
+        "productKey": "product_key",
+        "deviceName": "device_name"
+    }
+}
+
+应答
+{
+    "code": 0,
+	"message": "Success",
+    "messageId": 0,
+    "payload": {}
+}
+```
+
+- 参数名称及其解释
+
+|名称 |类型 |取值 |描述 |
+|:---: |--- |--- |--- |
+|method |字符串 |"onlineDevice",<br>"offlineDevice",<br>"reportProperty",<br>"reportEvent",<br>"setProperty",<br>"getProperty",<br>"methodCall" |执行动作 |
+|code |32位无符号整型 |[code取值](#Code取值) |请求结果返回码。|
+|message |字符串 |- |与code对应的提示信息 |
+|messageId |32位无符号整型 |-|消息编号，唯一标识这条消息, 对端收到消息的反馈中携带相同id。 |
+|payload |json对象 |- |内容负载 |
+|productKey |字符串|- |产品键值，云端创建产品时生成 |
+|deviceName|字符串|- | 设备名称，云端创建设备时生成|
+|properties|json数组 |- |设备属性 |
+|identifier |字符串 |- |属性、事件、服务标识符 |
+|inputData|json数组 |- |输入参数 |
+|outputData|json数组 |- |输出参数 |
+|type|32位无符号整型|[type取值](#Type取值) |属性或参数的数据类型 |
+|value|所有json数据类型 |- |属性或参数值 |
+
+### Code取值
+| 取值 | 含义 |
+| :--: | :-- |
+|0 |请求成功 |
+|100000 |不能被识别的错误，用户不应该看到的错误 |
+|100001 |传入参数为NULL或无效 |
+|100002 |指定的内存分配失败 |
+|100003 |创建mutex失败 |
+|100004 |写入文件失败 |
+|100005 |读取文件失败 |
+|100006 |超时 |
+|100007 |参数范围越界 |
+|100008 |服务不可达 |
+|100009 |文件不存在 |
+|109000 |设备未注册 |
+|109001 |设备已下线 |
+|109002 |属性不存在 |
+|109003 |属性只读 |
+|109004 |属性只写 |
+|109005 |服务不存在 |
+|109006 |服务的输入参数不正确错误码 |
+|109007 |JSON格式错误 |
+|109008 |参数类型错误 |
+
+### Type取值
+| 取值 | 含义 |
+| :--: | :-- |
+|0 |整型 |
+|1 |布尔型 对应值为 0 or 1 |
+|2 |浮点型 |
+|3 |字符串型 |
+|4 |日期型 |
+|5 |枚举型 |
+|6 |结构型 |
+|7 |数组型 |
+|8 |双精度浮点型 |
+
+## 设备上线
+
+- 消息方向： client->server
+- 设备注册成功之后，可以执行设备上线命令，设备上线成功之后，才能被操作
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "onlineDevice",
+    "messageId": 1,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name"
+    }
+}
+
+应答
+{
+    "code": 0,
+	"message": "Success",
+    "messageId": 1,
+    "payload": {}
+}
+```
+## 上报属性
+
+- 消息方向： client->server
+- 设备上线成功之后，上报全量设备属性，其他时候根据设备实际运行状况上报
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "reportProperty",
+    "messageId": 0,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name",  
+        "properties": [
+            {
+                "identifier": "name_int",
+                "type": 0,
+                "value": 123
+            }
+        ]
+    }
+}
+
+应答
+{
+    "code": 0,
+	"message": "Success",
+    "messageId": 0,
+    "payload": {}
+}
+```
+* 说明："name_int"为具体的设备属性名称，下文"name_bool"也是
+
+## 上报事件
+
+- 消息方向：client->server
+- 事件触发时上报
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "reportEvent",
+    "messageId": 1,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name",
+        "identifier": "event_name",
+        "inputData": [
+            {
+                "identifier": "name_int",
+                "type": 0,
+                "value": 123
+            }
+        ]
+    }
+}
+
+应答
+{
+    "code": 0,
+	"message": "Success",
+    "messageId": 1,
+    "payload": {}
+}
+```
+## 设置属性
+
+- 消息方向：server->client
+- 边缘网关对设备属性设置
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "setProperty",
+    "messageId": 2,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name",
+        "properties": [
+            {
+                "identifier": "name_int",
+                "type": 0,
+                "value": 123
+            },
+            {
+                "identifier": "name_bool",
+                "type": 1,
+                "value": 0
+            }        
+        ]
+    }
+}
+
+应答
+{
+    "code": 0,
+    "messageId": 2,
+    "payload": {}
+}
+```
+## 获取属性
+
+- 消息方向：server->client
+- 边缘网关获取设备属性
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "getProperty",
+    "messageId": 3,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name",
+        "properties": ["name_int", "name_bool"]
+    }
+}
+
+应答
+{
+    "code": 0,
+    "messageId": 3,
+    "payload": {
+        "properties": [
+            {
+                "identifier": "name_int",
+                "type": 0,
+                "value": 123
+            },
+            {
+                "identifier": "name_bool",
+                "type": 1,
+                "value": 0
+            }        
+        ]
+    }
+}
+```
+## 方法调用
+
+- 消息方向：server->client
+- 边缘网关操作设备方法
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "methodCall",
+    "messageId": 4,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name",
+        "identifier": "service_name",
+        "inputData": [
+            {
+                "identifier": "name_bool",
+                "type": 1,
+                "value": 123
+            }
+        ]
+    }
+}
+
+应答
+{
+    "code": 0,
+    "messageId": 4,
+    "payload": {
+        "outputData": []
+    }
+}
+```
+## 设备下线
+
+- 消息方向：client->server
+- 设备离线后，调用设备下线命令，通知边缘网关设备离线，设备重新上线后，无需再次注册，只需要上报设备上线即可
+
+- 消息体格式
+
+```
+请求
+{
+    "version": "v0.2",
+    "method": "offlineDevice",
+    "messageId": 2,
+    "payload": {
+        "productKey": "product_key",
+        "deviceName": "device_name"  
+    }
+}
+
+应答
+{
+    "code": 0,
+	"message":"Success",
+    "messageId": 2,
+    "payload": {}
+}
+```
