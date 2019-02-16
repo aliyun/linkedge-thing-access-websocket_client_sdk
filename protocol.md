@@ -13,7 +13,7 @@
 
 ## 简介
 
-本文档定义了一套基于JSON规范的设备接入阿里云IoT边缘计算(Link IoT Edge)的协议规范。设备端作为client, 边缘计算网关作为server, 基于本协议完成
+本文档基于[阿里云物模型](https://help.aliyun.com/document_detail/73727.html?spm=a2c4g.11186623.3.4.4a01f9bcabQ3fn)，定义了一套JSON规范的设备接入阿里云IoT边缘计算(Link IoT Edge)的协议规范。设备端作为client, 边缘计算网关作为server, 基于本协议完成
 设备上/下线，上报属性，上报事件，获取属性，设置属性，方法调用等功能。
 
 ## 消息体格式
@@ -51,11 +51,11 @@
 |payload |json对象 |- |内容负载 |
 |productKey |字符串|- |产品键值，云端创建产品时生成 |
 |deviceName|字符串|- | 设备名称，云端创建设备时生成|
-|properties|json数组 |- |设备属性 |
-|identifier |字符串 |- |属性、事件、服务标识符 |
-|inputData|json数组 |- |输入参数 |
-|outputData|json数组 |- |输出参数 |
-|type|字符串 |- |属性或参数的数据类型 |
+|properties|json数组 |[参考阿里云物模型](https://help.aliyun.com/document_detail/88250.html?spm=a2c4g.11186623.6.569.761af9bcpM8OJR) |设备属性 |
+|identifier |字符串 |[参考阿里云物模型](https://help.aliyun.com/document_detail/88250.html?spm=a2c4g.11186623.6.569.761af9bcpM8OJR) |属性、事件、服务标识符 |
+|inputData|json数组 |[参考阿里云物模型](https://help.aliyun.com/document_detail/88250.html?spm=a2c4g.11186623.6.569.761af9bcpM8OJR) |输入参数 |
+|outputData|json数组 |[参考阿里云物模型](https://help.aliyun.com/document_detail/88250.html?spm=a2c4g.11186623.6.569.761af9bcpM8OJR) |输出参数 |
+|type|字符串 |[参考阿里云物模型](https://help.aliyun.com/document_detail/88250.html?spm=a2c4g.11186623.6.569.761af9bcpM8OJR) |属性或参数的数据类型 |
 |value|所有json数据类型 |- |属性或参数值 |
 
 ### Code取值
