@@ -159,7 +159,7 @@
         "productKey": "product_key",
         "deviceName": "device_name",
         "identifier": "event_name",
-        "inputData": [
+        "outputData": [
             {
                 "identifier": "name_int",
                 "type": "int",
