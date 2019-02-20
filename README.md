@@ -18,6 +18,7 @@
 
 linux环境下
 
+* 修改demo.c中g_devices中的pk,dn
 * 执行编译命令: `make`
 * 在sdk/export/lib目录会生成libleda.so, 在demo目录下生成demo可执行程序
 
@@ -25,5 +26,6 @@ linux环境下
 
 linux环境下
     
-    ./start_demo.sh [ip] [pk] [dn] <tls>
+    ./start_demo.sh [ip] <tls>
     
+ 
