@@ -10,6 +10,7 @@ SDK_DEPEND_LIB_PATH=-L sdk/os/linux/prebuilt/libwebsockets/lib -L sdk/os/linux/p
 all: demo leda
   
 leda :
+	mkdir -p sdk/export/lib
 	gcc $(SDK_SRC) $(SDK_INCLUDE)  $(SDK_DENPEND_LIB) $(SDK_DEPEND_LIB_PATH) -fPIC -shared -o sdk/export/lib/libleda.so
 
 demo : leda

@@ -203,7 +203,7 @@ int main(int argc, char **argv)
     conn.conn_devices_cb.get_properties_cb = cb_get_property;
     conn.conn_devices_cb.usr_data_get_property = NULL;
     conn.conn_devices_cb.set_properties_cb = cb_set_property;
-    conn.conn_devices_cb.set_properties_cb = NULL;
+    conn.conn_devices_cb.usr_data_set_property = NULL;
     conn.conn_devices_cb.call_service_cb = cb_call_service;
     conn.conn_devices_cb.usr_data_call_service = NULL;
     if (leda_wsc_init(&conn) != LE_SUCCESS) {
