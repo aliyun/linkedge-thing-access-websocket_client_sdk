@@ -129,6 +129,14 @@ typedef int (*call_service_callback)(const char *pk, const char *dn,
                                      int data_count, 
                                      leda_device_data_t output_data[], void *usr_data);
 
+/*
+ * 异步上报属性及事件的应答回调函数,使用异步接口上报属性及事件时，接口会立马返回，如果需要对上报结果进行处理，需要注册该接口
+ * 
+ * @msg_id      32位的消息id
+ * @code        上报结果返回码
+ * @usr_data    客户端初始化时, 用户传递的私有数据.
+ * */
+typedef int (*report_reply_callback)(int msg_id, int code, void *usr_data);
 
 /*
  * 设备回调函数group
@@ -140,7 +148,9 @@ typedef struct {
     void *usr_data_set_property;                            /* 设置属性回调函数的用户私有数据, 在接口被调用时, 该数据会传递过去*/
     call_service_callback       call_service_cb;            /* 设备服务回调 */
     void *usr_data_call_service;                            /* 服务回调函数的用户私有数据, 在接口被调用时, 该数据会传递过去*/
-    int                         service_output_max_count;   /* 设备服务回调结果数组最大长度 */
+    report_reply_callback report_reply_cb;                  /* 异步上报属性及事件的应答回调函数*/
+    void *usr_data_report_reply;                            /* 异步上报属性及事件的应答回调函数的私有数据，在接口被调用时，该数据会传递过去*/    
+    int                         service_output_max_count;   /* 设备服务回调结果数组最大长度 */   
 } leda_device_callback_t;
 
 
@@ -217,7 +227,7 @@ int leda_offline(const char *pk, const char *dn);
  * @properties:          @leda_device_data_t, 属性数组.
  * @properties_count:    本次上报属性个数.
  *
- * 阻塞接口, 成功返回LE_SUCCESS,  失败返回错误码.
+ * 阻塞接口, 等待服务端返回, 成功返回LE_SUCCESS,  失败返回错误码.
  *
  */
 int leda_report_properties(const char *pk, const char *dn, const leda_device_data_t properties[], int properties_count);
@@ -232,10 +242,41 @@ int leda_report_properties(const char *pk, const char *dn, const leda_device_dat
  * @data:        @leda_device_data_t, 事件参数数组.
  * @data_count:  事件参数数组长度.
  *
- * 阻塞接口, 成功返回LE_SUCCESS,  失败返回错误码.
+ * 阻塞接口, 等待服务端返回, 成功返回LE_SUCCESS,  失败返回错误码.
+ *
+ */
+int leda_report_event_sync(const char *pk, const char *dn, const char *event_name, const leda_device_data_t data[], int data_count);
+
+/*
+ * 上报属性, 设备具有的属性在设备能力描述 tsl 里有规定.
+ *
+ * 上报属性, 可以上报一个, 也可以多个一起上报.
+ *
+ * @pk:          设备productKey.
+ * @dn:          设备deviceName.
+ * @properties:          @leda_device_data_t, 属性数组.
+ * @properties_count:    本次上报属性个数.
+ *
+ * 非阻塞接口, 发送成功即返回, 成功返回LE_SUCCESS,  失败返回错误码.
+ *
+ */
+int leda_report_properties_sync(const char *pk, const char *dn, const leda_device_data_t properties[], int properties_count);
+
+/*
+ * 上报事件, 设备具有的事件上报能力在设备 tsl 里有约定.
+ *
+ * 
+ * @pk:          设备productKey.
+ * @dn:          设备deviceName.
+ * @event_name:  事件名称.
+ * @data:        @leda_device_data_t, 事件参数数组.
+ * @data_count:  事件参数数组长度.
+ *
+ * 非阻塞接口, 发送成功即返回, 成功返回LE_SUCCESS,  失败返回错误码.
  *
  */
 int leda_report_event(const char *pk, const char *dn, const char *event_name, const leda_device_data_t data[], int data_count);
+
 
 
 #ifdef __cplusplus  /* If this is a C++ compiler, use C linkage */

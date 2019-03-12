@@ -71,6 +71,7 @@ int client_buf_mgmt_push(const char *buf, size_t len, int msg_type)
 		g_ws_buf_state.wr_index = 0;
         windex = 0;
     }
+    ++len;
     if(len > g_ws_buf_state.single_buf_size - LWS_PRE){
         tmp = realloc(g_ws_buf[windex].buf, len + LWS_PRE);    
         if(!tmp){
@@ -83,7 +84,8 @@ int client_buf_mgmt_push(const char *buf, size_t len, int msg_type)
     }
 
 	memset(g_ws_buf[windex].buf, 0, g_ws_buf[windex].buf_len);
-	memcpy(g_ws_buf[windex].buf + LWS_PRE, buf, len);
+	memcpy(g_ws_buf[windex].buf + LWS_PRE, buf, len - 1);
+	g_ws_buf[windex].buf[LWS_PRE + len - 1] = '\0';
 	g_ws_buf[windex].buf_len = len;
 	g_ws_buf[windex].type = msg_type;
 
@@ -124,6 +126,8 @@ int client_buf_mgmt_pop(cb_del cb, void *usr)
     g_ws_buf[rindex].buf_len = 0;
 	g_ws_buf_state.rd_index++;
 	pthread_mutex_unlock(&g_ws_buf_state.locker);
+	
+	notify_network();
 	return LE_SUCCESS;
 }
 

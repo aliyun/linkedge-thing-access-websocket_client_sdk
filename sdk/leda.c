@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <time.h>
+#include <errno.h>
+#include <semaphore.h>
 
 #include "libwebsockets.h"
 #include "ws_client.h"
@@ -9,6 +12,7 @@
 #include "base-utils.h"
 #include "cJSON.h"
 #include "os.h"
+#include "threadpool.h"
 #include "le_error.h"
 #include "leda.h"
 
@@ -31,6 +35,7 @@ typedef struct wsa_reply {
     struct list_head list_node;
     int msg_id;
     int code;
+    sem_t sem;
     char *payload;
 } wsa_reply_t;
 
@@ -57,10 +62,10 @@ pthread_mutex_t wsa_replay_lock;
 
 static unsigned int     g_msg_id = 0;
 static pthread_mutex_t  g_msg_locker = PTHREAD_MUTEX_INITIALIZER;
+threadpool_t *g_threadpool_recv_proc = NULL;
 
 
-
-static char *g_type_map[9] = {
+static char *g_type_map[10] = {
     "int", //LEDA_TYPE_INT
     "bool", //LEDA_TYPE_BOOL
     "float", //LEDA_TYPE_FLOAT
@@ -69,11 +74,15 @@ static char *g_type_map[9] = {
     "enum", //LEDA_TYPE_ENUM
     "struct", //LEDA_TYPE_STRUCT
     "array", //LEDA_TYPE_ARRAY
-    "double" //LEDA_TYPE_DOUBLE
+    "double", //LEDA_TYPE_DOUBLE
+    "invalid" 
 };
 
 const char *type_number_to_string(int type)
 {
+    if (type < 0 || type > 8) {
+        return g_type_map[9];
+    }
     return g_type_map[type];
 }
 
@@ -95,7 +104,7 @@ int type_string_to_number(char *type)
         return LEDA_TYPE_STRUCT;
     } else if (0 == strcmp("array", type)) {
         return LEDA_TYPE_ARRAY;
-    } else if (0 == strcmp("struct", type)) {
+    } else if (0 == strcmp("double", type)) {
         return LEDA_TYPE_DOUBLE;
     } else {
         return -1;
@@ -145,6 +154,9 @@ cJSON *struct_data_to_json_data(const leda_device_data_t *struct_data, int data_
                 }
                 cJSON_AddItemToObject(item, "value", sub_item);
                 break;
+            default:
+                cJSON_AddStringToObject(item, "value", "invalid");
+                break;
         }
         cJSON_AddItemToArray(root, item);
     }
@@ -153,7 +165,7 @@ cJSON *struct_data_to_json_data(const leda_device_data_t *struct_data, int data_
 }
 
 
-int json_data_to_struct_data(cJSON *json_data, int is_string, leda_device_data_t **struct_data, int *data_cnt)
+int json_data_to_struct_data(cJSON *json_data, leda_device_data_t **struct_data, int *data_cnt)
 {
     int size, i = 0;
     cJSON *item, *sub_item;
@@ -173,7 +185,7 @@ int json_data_to_struct_data(cJSON *json_data, int is_string, leda_device_data_t
         return LE_ERROR_ALLOCATING_MEM;
     }
     cJSON_ArrayForEach(item, json_data) {
-        if (is_string) {
+        if (item->type == cJSON_String) {
             snprintf(data[i++].key, MAX_PARAM_NAME_LENGTH, "%s", item->valuestring);
             continue;
         }
@@ -219,6 +231,9 @@ int json_data_to_struct_data(cJSON *json_data, int is_string, leda_device_data_t
                 snprintf(data[i].value, MAX_PARAM_VALUE_LENGTH, "%s", buff);
                 free(buff);
                 break;
+            default:
+                log_e(LOG_TAG, "invalid type for %s !\n", data[i].key);
+                break;
         }
         ++i;
     }
@@ -240,25 +255,11 @@ unsigned int get_msg_id()
 }
 
 
-static int _wsa_timelock(int timeout_ms)
-{
-    struct timespec tout;
-
-    clock_gettime(CLOCK_REALTIME, &tout);
-    if (timeout_ms > 0) {
-        tout.tv_sec += (timeout_ms / 1000);
-        tout.tv_nsec += (timeout_ms % 1000) * 1000 * 1000;
-    }
-    return pthread_mutex_timedlock(&wsa_replay_lock, &tout);
-}
-
 static wsa_reply_t *_wsa_get_reply_by_msg_id(int msg_id)
 {
     wsa_reply_t *pos, *next, *reply = NULL;
 
-    if (0 != _wsa_timelock(1000)) {
-        return NULL;
-    }
+    pthread_mutex_lock(&wsa_replay_lock);
     list_for_each_entry_safe(pos, next, &wsa_replay_head, list_node) {
         if (pos->msg_id == msg_id) {
             reply = pos;
@@ -273,9 +274,7 @@ int wsa_insert_reply(int msg_id)
 {
     wsa_reply_t *reply;
 
-    if (0 != _wsa_timelock(1000)) {
-        return LE_ERROR_TIMEOUT;
-    }
+    pthread_mutex_lock(&wsa_replay_lock);
     reply = (wsa_reply_t *)malloc(sizeof(wsa_reply_t));
     if (NULL == reply) {
         log_e(LOG_TAG, "no memory\r\n");
@@ -283,8 +282,13 @@ int wsa_insert_reply(int msg_id)
         return LE_ERROR_ALLOCATING_MEM;
     }
     reply->msg_id = msg_id;
-    reply->code = -1;
-
+    reply->code = LE_ERROR_UNKNOWN;
+    if (0 != sem_init(&reply->sem, 0, 0)) {
+        free(reply);
+        pthread_mutex_unlock(&wsa_replay_lock);
+        log_e(LOG_TAG, "semphore init error!");
+        return LE_ERROR_UNKNOWN;
+    }
     list_add(&reply->list_node, &wsa_replay_head);
     pthread_mutex_unlock(&wsa_replay_lock);
     return LE_SUCCESS;
@@ -299,9 +303,12 @@ void wsa_remove_reply(int msg_id)
         return;
     }
 
-    if (0 != _wsa_timelock(5000)) {
-        return;
+    pthread_mutex_lock(&wsa_replay_lock);
+    if (reply->payload) {
+        free(reply->payload);
+        reply->payload = NULL;
     }
+    sem_destroy(&reply->sem);
     list_del(&reply->list_node);
     free(reply);
     pthread_mutex_unlock(&wsa_replay_lock);
@@ -314,46 +321,55 @@ int wsa_set_reply_result(int msg_id, int code, char *payload)
 
     reply = _wsa_get_reply_by_msg_id(msg_id);
     if (NULL == reply) {
-        return LE_ERROR_TIMEOUT;
+        return -1;
     }
-    if (0 != _wsa_timelock(1000)) {
-        return LE_ERROR_TIMEOUT;
-    }
+
+    pthread_mutex_lock(&wsa_replay_lock);
     reply->code = code;
-    reply->payload = payload;
+    if (payload) {
+        reply->payload = strdup(payload);
+    }
     pthread_mutex_unlock(&wsa_replay_lock);
+    sem_post(&reply->sem);
     return 0;
 }
 
 int wsa_get_reply_result(int msg_id, int timeout_ms, int *code, char **payload)
 {
-    int time_count = 0;
+    int time_count = 0, s;
     wsa_reply_t *reply;
+    struct timespec ts = {0};
 
     reply = _wsa_get_reply_by_msg_id(msg_id);
     if (NULL == reply) {
         log_d(LOG_TAG, "get reply err:%d\r\n", msg_id);
+        return LE_ERROR_INVAILD_PARAM;
+    }
+    if (-1 == clock_gettime(CLOCK_REALTIME, &ts)) {
+        wsa_remove_reply(msg_id);
+        return LE_ERROR_UNKNOWN;
+    }
+    ts.tv_nsec = ts.tv_nsec + (timeout_ms % 1000) * 1000000000;
+    ts.tv_sec = ts.tv_sec + timeout_ms / 1000;
+    while ((s = sem_timedwait(&reply->sem, &ts)) == -1 && errno == EINTR) {
+        continue;
+    }
+
+    if (-1 == s) {
+        wsa_remove_reply(msg_id);
+        log_e(LOG_TAG, "get reply time_out:%s", strerror(errno));
         return LE_ERROR_TIMEOUT;
     }
-    while (timeout_ms > time_count) {
-        if (-1 != reply->code) {
-            if (code) {
-                *code = reply->code;
-            }
-            if (payload) {
-                *payload = reply->payload;
-            } else {
-                free(reply->payload);
-            }
-            wsa_remove_reply(msg_id);
-            return LE_SUCCESS;
-        }
-        time_count++;
-        usleep(1000);
+    
+    if (code) {
+        *code = reply->code;
+    }
+    if (payload) {
+        *payload = strdup(reply->payload);
     }
     wsa_remove_reply(msg_id);
-    log_d(LOG_TAG, "get reply time_out:%d\r\n", msg_id);
-    return LE_ERROR_TIMEOUT;
+
+    return LE_SUCCESS;
 }
 
 
@@ -387,7 +403,7 @@ int leda_parse_received_msg(cJSON *root, int *msg_id, int *code, char **method, 
 }
 
 
-int leda_send_method(const char *pk, const char *dn, const char *method, const char *event_name,
+int leda_send_method_sync(const char *pk, const char *dn, const char *method, const char *event_name,
                      const leda_device_data_t *data, int data_cnt)
 {
     cJSON *root, *payload, *params, *item, *sub_item;
@@ -395,6 +411,10 @@ int leda_send_method(const char *pk, const char *dn, const char *method, const c
     char *msg;
     size_t len;
     int ret, code = 0, i;
+
+    if (!pk || !dn || !method) {
+        return LE_ERROR_INVAILD_PARAM;
+    }
 
     msg_id = get_msg_id();
 
@@ -448,13 +468,77 @@ next_step:
         wsa_remove_reply(msg_id);
         return ret;
     }
-    ret = wsa_get_reply_result(msg_id, 5000, &code, NULL);
+    
+    ret = wsa_get_reply_result(msg_id, 3000, &code, NULL);
     if (ret != LE_SUCCESS) {
+        log_e(LOG_TAG, "reply code:%d\n", code);
         return ret;
     }
 
     return code;
 }
+
+int leda_send_method(const char *pk, const char *dn, const char *method, const char *event_name,
+const leda_device_data_t *data, int data_cnt)
+{
+    cJSON *root, *payload, *params, *item, *sub_item;
+    unsigned int msg_id;
+    char *msg;
+    size_t len;
+    int ret, code = 0, i;
+    
+    if (!pk || !dn || !method) {
+        log_e(LOG_TAG, "invalid param!");
+        return LE_ERROR_INVAILD_PARAM;
+    }
+
+    msg_id = get_msg_id();
+
+    root = cJSON_CreateObject();
+    if (!root) {
+        return LE_ERROR_ALLOCATING_MEM;
+    }
+    cJSON_AddStringToObject(root, "version", PROTOCOL_VERSION);
+    cJSON_AddNumberToObject(root, "messageId", msg_id);
+    cJSON_AddStringToObject(root, "method", method);
+    payload = cJSON_CreateObject();
+    if (!payload) {
+        return LE_ERROR_ALLOCATING_MEM;
+    }
+    cJSON_AddItemToObject(root, "payload", payload);
+    cJSON_AddStringToObject(payload, "productKey", pk);
+    cJSON_AddStringToObject(payload, "deviceName", dn);
+
+    if (0 == strcmp(method, METHOD_ONLINE) || 0 == strcmp(method, METHOD_OFFLINE)) {
+        goto next_step;
+    }
+    params = struct_data_to_json_data(data, data_cnt);
+    if (!params) {
+        cJSON_Delete(root);
+        goto next_step;
+    }
+    if (event_name) {
+        cJSON_AddStringToObject(payload, "identifier", event_name);
+        cJSON_AddItemToObject(payload, "outputData", params);
+    } else {
+        cJSON_AddItemToObject(payload, "properties", params);
+    }
+
+next_step:
+    msg = cJSON_Print(root);
+    cJSON_Delete(root);
+    if (!msg) {
+        return LE_ERROR_ALLOCATING_MEM;
+    }
+    len = strlen(msg);
+
+    log_i(LOG_TAG, "send messege to server: %s", msg);
+    ret = wsc_add_msg(msg, len, 0);
+    free(msg);
+
+    return ret;
+}
+
 
 
 int leda_send_rsp(int code, int msg_id, cJSON *payload)
@@ -576,93 +660,131 @@ end:
     return leda_send_rsp(ret, msg_id, payload);
 }
 
+typedef struct {
+    int msg_type;
+    int msg_id;
+    int code;
+    char method[16];
+    cJSON *payload;
+} parsed_msg_t;
+
+
+void threadpool_recv_proc(void *arg)
+{
+    parsed_msg_t *parsed_msg;
+    char *payload_str = NULL, *pk, *dn;
+    cJSON *item, *service_name;
+    leda_device_data_t *data = NULL;
+    int data_cnt = 0;
+
+    if (!arg) {
+        return;
+    }
+    parsed_msg = (parsed_msg_t *)arg;
+
+    if (parsed_msg->msg_type == MSG_RSP) {
+        payload_str = cJSON_Print(parsed_msg->payload);
+        if (wsa_set_reply_result(parsed_msg->msg_id, parsed_msg->code, payload_str) < 0) {
+            if (g_devs_cb.report_reply_cb) {
+                g_devs_cb.report_reply_cb(parsed_msg->msg_id, parsed_msg->code, g_devs_cb.usr_data_report_reply);
+            }
+        }
+        if (payload_str) {
+            free(payload_str);
+        }
+        goto end;
+    } else if (parsed_msg->msg_type == MSG_METHOD) {
+        item = cJSON_GetObjectItem(parsed_msg->payload, "productKey");
+        if (!item) {
+            goto end;
+        }
+        pk = item->valuestring;
+        item = cJSON_GetObjectItem(parsed_msg->payload, "deviceName");
+        if (!item) {
+            goto end;
+        }
+        dn = item->valuestring;
+        item = cJSON_GetObjectItem(parsed_msg->payload, "properties");
+        if (!item) {
+            item = cJSON_GetObjectItem(parsed_msg->payload, "inputData");
+        }
+        if (!item) {
+            goto end;
+        }
+        
+        if (LE_SUCCESS != json_data_to_struct_data(item, &data, &data_cnt)) {
+            goto end;
+        }
+        if (0 == strcmp(parsed_msg->method, METHOD_GET_PROPERTY)) {
+            leda_rsp_get_properties(pk, dn, parsed_msg->msg_id, data, data_cnt);
+        } else if (0 == strcmp(parsed_msg->method, METHOD_SET_PROPERTY)) {
+            leda_rsp_set_properties(pk, dn, parsed_msg->msg_id, data, data_cnt);
+        } else if (0 == strcmp(parsed_msg->method, METHOD_CALL_SERVICE)) {
+            service_name = cJSON_GetObjectItem(parsed_msg->payload, "identifier");
+            if (!service_name) {
+                goto end;
+            }
+            leda_rsp_call_service(pk, dn, parsed_msg->msg_id, service_name->valuestring, data, data_cnt);
+        } else {
+            goto end;
+        }
+    } else {
+        goto end;
+    }
+
+end:
+    if (parsed_msg) {
+        if (parsed_msg->payload) {
+            cJSON_Delete(parsed_msg->payload);
+        }
+        free(parsed_msg);
+    }
+    if (data) {
+        free(data);
+    }
+    return;
+}
 
 static void cb_ws_recv(const char *msg, size_t len, void *user)
 {
-    int ret, i, code = 0, msg_id = 0, data_cnt = 0, msg_type;
-    cJSON *root, *payload = NULL, *item, *service_name;
-    leda_device_data_t *data = NULL, *output_data = NULL;
-    char *method = NULL, *payload_str, *pk = NULL, *dn = NULL;
-
-    if (NULL == msg) {
+    cJSON *root, *payload = NULL;
+    int msg_type, msg_id = 0;
+    char *method = NULL;
+    parsed_msg_t *parsed_msg;
+    
+    if (!msg) {
         return;
     }
-
     log_i(LOG_TAG, "received msg: %s", msg);
 
     root = cJSON_Parse(msg);
     if (!root) {
         return;
     }
-    msg_type = leda_parse_received_msg(root, &msg_id, &code, &method, &payload);
-    if (MSG_RSP == msg_type) {
-        payload_str = cJSON_Print(payload);
-        wsa_set_reply_result(msg_id, code, payload_str);
+    parsed_msg = malloc(sizeof(parsed_msg_t));
+    if (!parsed_msg) {
         cJSON_Delete(root);
-        return;
-    } else if (MSG_METHOD == msg_type) {
-        item = cJSON_GetObjectItem(payload, "productKey");
-        if (!item) {
-            goto end;
-        }
-        pk = item->valuestring;
-        item = cJSON_GetObjectItem(payload, "deviceName");
-        if (!item) {
-            goto end;
-        }
-        dn = item->valuestring;
-    } else {
-        cJSON_Delete(root);
+        log_e(LOG_TAG, "no memory!\n");
         return;
     }
-
-    if (!strcmp(method, METHOD_GET_PROPERTY)) {
-        item = cJSON_GetObjectItem(payload, "properties");
-        if (!item) {
-            goto end;
-        }
-        if (LE_SUCCESS != json_data_to_struct_data(item, 1, &data, &data_cnt)) {
-            goto end;
-        }
-        leda_rsp_get_properties(pk, dn, msg_id, data, data_cnt);
-        free(data);
-        cJSON_Delete(root);
-        return;
-    } else if (!strcmp(method, METHOD_SET_PROPERTY)) {
-        item = cJSON_GetObjectItem(payload, "properties");
-        if (!item) {
-            goto end;
-        }
-        if (LE_SUCCESS != json_data_to_struct_data(item, 0, &data, &data_cnt)) {
-            goto end;
-        }
-        leda_rsp_set_properties(pk, dn, msg_id, data, data_cnt);
-        free(data);
-        cJSON_Delete(root);
-        return;
-    } else if (!strcmp(method, METHOD_CALL_SERVICE)) {
-        service_name = cJSON_GetObjectItem(payload, "identifier");
-        if (!service_name) {
-            goto end;
-        }
-        item = cJSON_GetObjectItem(payload, "inputData");
-        if (LE_SUCCESS != json_data_to_struct_data(item, 0, &data, &data_cnt)) {
-            goto end;
-        }
-        leda_rsp_call_service(pk, dn, msg_id, service_name->valuestring, data, data_cnt);
-        free(data);
-        cJSON_Delete(root);
-        return;
-    } else {
-        goto end;
+    memset(parsed_msg, 0, sizeof(parsed_msg_t));
+    
+    parsed_msg->msg_type = leda_parse_received_msg(root, &parsed_msg->msg_id, &parsed_msg->code, &method, &payload);
+    if (method) {
+        snprintf(parsed_msg->method, sizeof(parsed_msg->method), "%s", method);
     }
-
-end:
-    if (data) {
-        free(data);
+    if (payload) {
+        parsed_msg->payload = cJSON_Duplicate(payload, 1);
+        if (!parsed_msg->payload) {
+            log_e(LOG_TAG, "no memory!");
+            free(parsed_msg);
+            cJSON_Delete(root);
+            return;
+        }
     }
     cJSON_Delete(root);
-    leda_send_rsp(code, msg_id, NULL);
+
+    threadpool_add(g_threadpool_recv_proc, threadpool_recv_proc, (void *)parsed_msg, 0);     
 
     return;
 }
@@ -691,13 +813,13 @@ static void cb_ws_estab(void *user)
 
 int leda_online(const char *pk, const char *dn)
 {
-    return leda_send_method(pk, dn, METHOD_ONLINE, NULL, NULL, 0);
+    return leda_send_method_sync(pk, dn, METHOD_ONLINE, NULL, NULL, 0);
 }
 
 
 int leda_offline(const char *pk, const char *dn)
 {
-    return leda_send_method(pk, dn, METHOD_OFFLINE, NULL, NULL, 0);
+    return leda_send_method_sync(pk, dn, METHOD_OFFLINE, NULL, NULL, 0);
 }
 
 
@@ -714,6 +836,19 @@ int leda_report_event(const char *pk, const char *dn, const char *event_name, co
 }
 
 
+int leda_report_properties_sync(const char *pk, const char *dn, const leda_device_data_t properties[], int properties_count)
+{
+  return leda_send_method_sync(pk, dn, EMTHOD_REPORT_PROPERTY, NULL, properties, properties_count);
+}
+
+
+int leda_report_event_sync(const char *pk, const char *dn, const char *event_name, const leda_device_data_t data[],
+                    int data_count)
+{
+  return leda_send_method_sync(pk, dn, METHOD_REPORT_EVENT, event_name, data, data_count);
+}
+
+
 int leda_wsc_init(const leda_conn_info_t *info)
 {
     int ret = 0;
@@ -724,6 +859,8 @@ int leda_wsc_init(const leda_conn_info_t *info)
     if (g_is_init == 1) {
         return 0;
     }
+
+    g_threadpool_recv_proc = threadpool_create(5, 5*1024, 0);
 
     g_conn_cb.conn_state_change_cb = info->ws_conn_cb.conn_state_change_cb;
     g_conn_cb.usr_data = info->ws_conn_cb.usr_data;
@@ -780,10 +917,15 @@ int leda_wsc_exit()
 {
     g_is_init = 0;
     force_exit = 1;
+    
+    if (g_threadpool_recv_proc) {
+        threadpool_destroy(g_threadpool_recv_proc, threadpool_graceful);
+    }
     if (context) {
         lws_cancel_service(context);
         context = NULL;
     }
+
     return ws_client_destroy();
 
 }
