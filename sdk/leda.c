@@ -489,21 +489,21 @@ const leda_device_data_t *data, int data_cnt)
     
     if (!pk || !dn || !method) {
         log_e(LOG_TAG, "invalid param!");
-        return LE_ERROR_INVAILD_PARAM;
+        return -LE_ERROR_INVAILD_PARAM;
     }
 
     msg_id = get_msg_id();
 
     root = cJSON_CreateObject();
     if (!root) {
-        return LE_ERROR_ALLOCATING_MEM;
+        return -LE_ERROR_ALLOCATING_MEM;
     }
     cJSON_AddStringToObject(root, "version", PROTOCOL_VERSION);
     cJSON_AddNumberToObject(root, "messageId", msg_id);
     cJSON_AddStringToObject(root, "method", method);
     payload = cJSON_CreateObject();
     if (!payload) {
-        return LE_ERROR_ALLOCATING_MEM;
+        return -LE_ERROR_ALLOCATING_MEM;
     }
     cJSON_AddItemToObject(root, "payload", payload);
     cJSON_AddStringToObject(payload, "productKey", pk);
@@ -528,15 +528,18 @@ next_step:
     msg = cJSON_Print(root);
     cJSON_Delete(root);
     if (!msg) {
-        return LE_ERROR_ALLOCATING_MEM;
+        return -LE_ERROR_ALLOCATING_MEM;
     }
     len = strlen(msg);
 
     log_i(LOG_TAG, "send messege to server: %s", msg);
     ret = wsc_add_msg(msg, len, 0);
     free(msg);
+    if (ret != LE_SUCCESS) {
+        return -ret;
+    }
 
-    return ret;
+    return msg_id;
 }
 
 

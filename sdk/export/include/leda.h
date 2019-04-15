@@ -216,6 +216,20 @@ int leda_online(const char *pk, const char *dn);
  */
 int leda_offline(const char *pk, const char *dn);
 
+/*
+ * 上报事件, 设备具有的事件上报能力在设备 tsl 里有约定.
+ *
+ * 
+ * @pk:          设备productKey.
+ * @dn:          设备deviceName.
+ * @event_name:  事件名称.
+ * @data:        @leda_device_data_t, 事件参数数组.
+ * @data_count:  事件参数数组长度.
+ *
+ * 非阻塞接口, 发送成功即返回, 成功返回消息id(>=0),  失败返回错误码的相反值(<0).
+ *
+ */
+int leda_report_event(const char *pk, const char *dn, const char *event_name, const leda_device_data_t data[], int data_count);
 
 /*
  * 上报属性, 设备具有的属性在设备能力描述 tsl 里有规定.
@@ -227,7 +241,7 @@ int leda_offline(const char *pk, const char *dn);
  * @properties:          @leda_device_data_t, 属性数组.
  * @properties_count:    本次上报属性个数.
  *
- * 阻塞接口, 等待服务端返回, 成功返回LE_SUCCESS,  失败返回错误码.
+ * 非阻塞接口, 发送成功即返回, 成功返回消息id(>=0),  失败返回错误码的相反值(<0).
  *
  */
 int leda_report_properties(const char *pk, const char *dn, const leda_device_data_t properties[], int properties_count);
@@ -261,22 +275,6 @@ int leda_report_event_sync(const char *pk, const char *dn, const char *event_nam
  *
  */
 int leda_report_properties_sync(const char *pk, const char *dn, const leda_device_data_t properties[], int properties_count);
-
-/*
- * 上报事件, 设备具有的事件上报能力在设备 tsl 里有约定.
- *
- * 
- * @pk:          设备productKey.
- * @dn:          设备deviceName.
- * @event_name:  事件名称.
- * @data:        @leda_device_data_t, 事件参数数组.
- * @data_count:  事件参数数组长度.
- *
- * 非阻塞接口, 发送成功即返回, 成功返回LE_SUCCESS,  失败返回错误码.
- *
- */
-int leda_report_event(const char *pk, const char *dn, const char *event_name, const leda_device_data_t data[], int data_count);
-
 
 
 #ifdef __cplusplus  /* If this is a C++ compiler, use C linkage */
