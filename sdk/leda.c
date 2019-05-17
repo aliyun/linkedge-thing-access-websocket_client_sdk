@@ -469,7 +469,7 @@ next_step:
         return ret;
     }
     
-    ret = wsa_get_reply_result(msg_id, 3000, &code, NULL);
+    ret = wsa_get_reply_result(msg_id, 10000, &code, NULL);
     if (ret != LE_SUCCESS) {
         log_e(LOG_TAG, "reply code:%d\n", code);
         return ret;

@@ -640,9 +640,15 @@ void* thread_online(void *arg)
         pthread_cond_wait(&g_cond_conn_state_changed, &g_mtx_online);
         for (i = 0; i < count; i++) {
             if (g_is_connected) {
-                ret = leda_online(g_devices[i].pk, g_devices[i].dn);
-                if (LE_SUCCESS == ret) {
-                    g_devices[i].online = 1;
+                while(!g_devices[i].online) {
+                    ret = leda_online(g_devices[i].pk, g_devices[i].dn);
+                    if (LE_SUCCESS == ret) {
+                        g_devices[i].online = 1;
+                        break;
+                    }
+                    if (LE_ERROR_TIMEOUT != ret) {
+                        break;
+                    }
                 }
             } else {
                 g_devices[i].online = 0; 
