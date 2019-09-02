@@ -46,7 +46,7 @@
 |method |字符串 |"onlineDevice",<br>"offlineDevice",<br>"reportProperty",<br>"reportEvent",<br>"setProperty",<br>"getProperty",<br>"callService" |执行动作 |
 |code |32位无符号整型 |[code取值](#Code取值) |请求结果返回码。|
 |message |字符串 |- |与code对应的提示信息 |
-|messageId |32位无符号整型 |-|消息编号，唯一标识这条消息, 对端收到消息的反馈中携带相同id。 |
+|messageId |32位无符号整型 |-|消息编号，唯一标识这条消息，从1开始开始， 对端收到消息的反馈中携带相同id。如果收到对端反馈消息id为0，则表明请求端消息未携带该字段 |
 |payload |json对象 |- |内容负载 |
 |productKey |字符串|- |产品键值，云端创建产品时生成 |
 |deviceName|字符串|- | 设备名称，云端创建设备时生成|

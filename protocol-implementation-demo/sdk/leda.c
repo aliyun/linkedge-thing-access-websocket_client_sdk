@@ -318,7 +318,7 @@ int json_data_to_struct_data(cJSON *json_data, leda_device_data_t **struct_data,
             break;
         case LEDA_TYPE_STRUCT:
         case LEDA_TYPE_ARRAY:
-            buff = cJSON_Print(sub_item);
+            buff = cJSON_PrintUnformatted(sub_item);
             if (!buff)
             {
                 log_w(LOG_TAG, "no memory can allocate\n");
@@ -525,7 +525,7 @@ int leda_send_rsp(int code, int msg_id, cJSON *payload)
     }
     cJSON_AddItemToObject(root, "payload", payload);
 
-    msg = cJSON_Print(root);
+    msg = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (NULL == msg)
     {
@@ -670,7 +670,7 @@ static void threadpool_recv_proc(void *arg)
     parsed_msg = (parsed_msg_t *)arg;
     if (parsed_msg->msg_type == MSG_RSP)
     {
-        payload_str = cJSON_Print(parsed_msg->payload);
+        payload_str = cJSON_PrintUnformatted(parsed_msg->payload);
         if (NULL != payload_str)
         {
             if (LE_SUCCESS != _ws_set_reply_result(parsed_msg->msg_id, parsed_msg->code, payload_str))
@@ -936,7 +936,7 @@ int leda_send_method(const char *pk,
 
 next_step:
 
-    msg = cJSON_Print(root);
+    msg = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (NULL == msg)
     {
@@ -1046,7 +1046,7 @@ int leda_asyn_send_method(const char *pk,
 
 next_step:
 
-    msg = cJSON_Print(root);
+    msg = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     if (NULL == msg)
     {
