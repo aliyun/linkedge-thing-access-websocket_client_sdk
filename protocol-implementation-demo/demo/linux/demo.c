@@ -196,9 +196,10 @@ static void cb_state_changed(leda_conn_state_e state, void *usr)
     }
     pthread_mutex_unlock(&g_conn_state_locker);
 
-    sem_post(&g_conn_state_sem);
     return;
 }
+
+static int g_online_dev_num = 0;
 
 void *thread_online(void *arg)
 {
@@ -210,7 +211,6 @@ void *thread_online(void *arg)
     count = g_devices_count;
     while (g_is_running)
     {
-        sem_wait(&g_conn_state_sem);
         pthread_mutex_lock(&g_conn_state_locker);
         for (i = 0; i < count; i++)
         {
@@ -222,15 +222,25 @@ void *thread_online(void *arg)
                     if (LE_SUCCESS == ret)
                     {
                         g_devices[i].online = 1;
+                        g_online_dev_num += 1;
+                        printf("online device(%s:%s) success\n", g_devices[i].pk, g_devices[i].dn);
                     }
                 }
             }
             else
             {
-                g_devices[i].online = 0;
+                if (g_devices[i].online)
+                {
+                    g_devices[i].online = 0;
+                    g_online_dev_num -= 1;
+                    printf("online device(%s:%s) failed, will try online again\n", g_devices[i].pk, g_devices[i].dn);
+                }
             }
         }
+
+        printf("current online device number is %d\n", g_online_dev_num);
         pthread_mutex_unlock(&g_conn_state_locker);
+        sleep(5);
     }
 }
 
@@ -250,6 +260,13 @@ void *thread_report(void *arg)
     count = g_devices_count;
     while (g_is_running)
     {
+        if (!g_is_connected)
+        {
+            printf("disconnect with websocket driver, stop send device data\n");
+            sleep(1);
+            continue;
+        }
+
         for (i = 0; i < count; i++)
         {
             pk = g_devices[i].pk;
